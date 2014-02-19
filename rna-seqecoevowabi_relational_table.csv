@@ -1,0 +1,73 @@
+SciLife_ID,Customer_ID,Host-Plant use,Host_Plant,Tissue,Family,Phylogeny_group,Million_reads
+P270_101,T1G,Core,Thistle,Gut,1,Asterids,12.89
+P270_102,T2G ,Core,Thistle,Gut,2,Asterids,14.83
+P270_103,T3G ,Core,Thistle,Gut,3,Asterids,19.55
+P270_104,T1MT,Core,Thistle,Malpighian tubules,1,Asterids,15.06
+P270_105,T2MT,Core,Thistle,Malpighian tubules,2,Asterids,13.47
+P270_106,T3MT,Core,Thistle,Malpighian tubules,3,Asterids,16.62
+P270_107,T1LG,Core,Thistle,Labial gland,1,Asterids,14.4
+P270_108,T2LG,Core,Thistle,Labial gland,2,Asterids,12.88
+P270_109,T3LG,Core,Thistle,Labial gland,3,Asterids,14.04
+P270_110,T1FB,Core,Thistle,Fat body,1,Asterids,22.8
+P270_111,T2FB,Core,Thistle,Fat body,2,Asterids,16.31
+P270_112,T3FB,Core,Thistle,Fat body,3,Asterids,21.94
+P270_113,N1G,Core,Nettle,Gut,1,Rosids,12.19
+P270_114,N2G,Core,Nettle,Gut,2,Rosids,18.5
+P270_115,N3G,Core,Nettle,Gut,3,Rosids,19.6
+P270_116,N1MT,Core,Nettle,Malpighian tubules,1,Rosids,9.32
+P270_117,N2MT,Core,Nettle,Malpighian tubules,2,Rosids,22.93
+P270_118,N3MT,Core,Nettle,Malpighian tubules,3,Rosids,14.77
+P270_119,N1LG,Core,Nettle,Labial gland,1,Rosids,17.58
+P270_120,N2LG,Core,Nettle,Labial gland,2,Rosids,11.73
+P270_121,N3LG,Core,Nettle,Labial gland,3,Rosids,20.69
+P270_122,N1FB,Core,Nettle,Fat body,1,Rosids,21.93
+P270_123,N2FB,Core,Nettle,Fat body,2,Rosids,19.25
+P270_124,N3FB,Core,Nettle,Fat body,3,Rosids,20.55
+P270_125,M1G,Core,Malva,Gut,1,Rosids,14.93
+P270_126,M2G,Core,Malva,Gut,2,Rosids,25.82
+P270_127,M3G,Core,Malva,Gut,3,Rosids,22.37
+P270_128,M1MT,Core,Malva,Malpighian tubules,1,Rosids,11.56
+P270_129,M2MT,Core,Malva,Malpighian tubules,2,Rosids,46.13
+P270_130,M3MT,Core,Malva,Malpighian tubules,3,Rosids,26.47
+P270_131,M1LG,Core,Malva,Labial gland,1,Rosids,14.7
+P270_132,M2LG,Core,Malva,Labial gland,2,Rosids,11.45
+P270_133,M3LG,Core,Malva,Labial gland,3,Rosids,16.47
+P270_134,M1FB,Core,Malva,Fat body,1,Rosids,17.92
+P270_135,M2FB,Core,Malva,Fat body,2,Rosids,17.02
+P270_136,M3FB,Core,Malva,Fat body,3,Rosids,11.04
+P270_137,L1G,Extended,Lungwort,Gut,1,Asterids,21.87
+P270_138,L2G,Extended,Lungwort,Gut,2,Asterids,15.46
+P270_139,L3G,Extended,Lungwort,Gut,3,Asterids,32.9
+P270_140,L1MT,Extended,Lungwort,Malpighian tubules,1,Asterids,19.64
+P270_141,L2MT,Extended,Lungwort,Malpighian tubules,2,Asterids,21.36
+P270_142,L3MT,Extended,Lungwort,Malpighian tubules,3,Asterids,16.72
+P270_143,L1LG,Extended,Lungwort,Labial gland,1,Asterids,13.82
+P270_144,L2LG,Extended,Lungwort,Labial gland,2,Asterids,16.11
+P270_145,L3LG,Extended,Lungwort,Labial gland,3,Asterids,14.15
+P270_146,L1FB,Extended,Lungwort,Fat body,1,Asterids,17.91
+P270_147,L2FB,Extended,Lungwort,Fat body,2,Asterids,18.11
+P270_148,L3FB,Extended,Lungwort,Fat body,3,Asterids,10.23
+P270_149,B1G,Extended,Buttercup,Gut,1,Ranunculales,16.49
+P270_150,B2G,Extended,Buttercup,Gut,2,Ranunculales,20.31
+P270_151,B3G,Extended,Buttercup,Gut,3,Ranunculales,18.93
+P270_152,B1MT,Extended,Buttercup,Malpighian tubules,1,Ranunculales,0
+P270_153,B2MT,Extended,Buttercup,Malpighian tubules,2,Ranunculales,11.72
+P270_154,B3MT,Extended,Buttercup,Malpighian tubules,3,Ranunculales,14.48
+P270_155,B1LG,Extended,Buttercup,Labial gland,1,Ranunculales,9.93
+P270_156,B2LG,Extended,Buttercup,Labial gland,2,Ranunculales,7.22
+P270_157,B3LG,Extended,Buttercup,Labial gland,3,Ranunculales,11.02
+P270_158,B1FB,Extended,Buttercup,Fat body,1,Ranunculales,24.44
+P270_159,B2FB,Extended,Buttercup,Fat body,2,Ranunculales,11.18
+P270_160,B3FB,Extended,Buttercup,Fat body,3,Ranunculales,15.16
+P270_161,P1G,Extended,Plantain,Gut,1,Asterids,39.98
+P270_162,P2G,Extended,Plantain,Gut,2,Asterids,61.81
+P270_163,P3G,Extended,Plantain,Gut,3,Asterids,13.8
+P270_164,P1MT,Extended,Plantain,Malpighian tubules,1,Asterids,13.81
+P270_165,P2MT,Extended,Plantain,Malpighian tubules,2,Asterids,12.78
+P270_166,P3MT,Extended,Plantain,Malpighian tubules,3,Asterids,13.4
+P270_167,P1LG,Extended,Plantain,Labial gland,1,Asterids,12.06
+P270_168,P2LG,Extended,Plantain,Labial gland,2,Asterids,20.25
+P270_169,P3LG,Extended,Plantain,Labial gland,3,Asterids,18.61
+P270_170,P1FB,Extended,Plantain,Fat body,1,Asterids,11.3
+P270_171,P2FB,Extended,Plantain,Fat body,2,Asterids,24.16
+P270_172B,P3FB,Extended,Plantain,Fat body,3,Asterids,²  9 M
