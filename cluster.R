@@ -130,5 +130,21 @@ res <- pvclust(x.log[which(rowMeans(x)>1),],nboot=100,method.hclust="complete")
 # Using all contigs
 res <- pvclust(x.log,nboot=100,method.hclust="complete")
 
+# 1000 bootstrap samples for all contigs, complete linkage
+res <- pvclust(x.log,nboot=1000,method.hclust="complete")
+
+
 # DESeq2
-dds <- DESeqDataSetFromMatrix(countData = counts, colData = pdata, design = ~individual)
+subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Gut"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant")], design = ~Phylogeny_group)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.001),]
+sig.o <- sig[order(sig$padj),]
+sig.top <- sig.o[1:100,]
+
+
