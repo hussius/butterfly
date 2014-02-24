@@ -3,7 +3,7 @@ library(pheatmap)
 counts <- read.delim("read_counts_with_proper_headers.csv",sep="\t",row.names=1)
 
 meta  <- read.csv("rna-seqecoevowabi_relational_table.csv")
-# meta <- meta[-which(meta$Customer_ID=="B1MT"),]
+meta <- meta[-which(meta$Customer_ID=="B1MT"),]
 
 labelled_heatmap <- function(data, meta){
 	corrs <- cor(data)
@@ -91,17 +91,21 @@ for (comp1 in 1:4){
 
 # Look at gut samples.
 subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
-gut <- tmm[,subset]
-gut.meta <- meta[which(meta$Tissue=="Gut"),]
-gut.log <- normalize.voom(gut)
 
-p <- prcomp(t(gut.log))
+columns <- intersect(subset, colnames(tmm))
+x <- tmm[,columns]
 
-par(mfrow=c(4,4))
-for (comp1 in 1:4){
-	for (comp2 in 1:4){
+x.meta <- meta[which(meta$Tissue=="Labial gland"),]
+x.log <- normalize.voom(x)
+
+#p <- prcomp(t(x.log[which(rowMeans(gut)>1),]))
+p <- prcomp(t(x.log))
+
+par(mfrow=c(5,4))
+for (comp1 in 1:5){
+	for (comp2 in 1:5){
 		if (comp1 != comp2){
-	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(gut)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
 #legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))
 	}
 }
@@ -114,6 +118,17 @@ legend("topright", 	legend=unique(type),pch=20,col=1:length(unique(type)))
 
 display.names <- paste(meta$Host_Plant,meta$Phylogeny_group,meta$Host.Plant.use,sep=".")
 names(display.names) <- meta$Customer_ID
+display.names.gut <- display.names[colnames(gut)]
 
-textxy(p$x[,comp1],p$x[,comp2],labs)
+text(p$x[,comp1],p$x[,comp2],labels=display.names.gut,cex=0.6)
 
+# Clustering with bootstrapping
+
+# Using contigs with CPM > 1
+res <- pvclust(x.log[which(rowMeans(x)>1),],nboot=100,method.hclust="complete")
+
+# Using all contigs
+res <- pvclust(x.log,nboot=100,method.hclust="complete")
+
+# DESeq2
+dds <- DESeqDataSetFromMatrix(countData = counts, colData = pdata, design = ~individual)
