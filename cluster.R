@@ -1,4 +1,5 @@
 library(pheatmap)
+library(pvclust)
 
 counts <- read.delim("read_counts_with_proper_headers.csv",sep="\t",row.names=1)
 
@@ -57,6 +58,7 @@ legend("topright", legend=unique(pgroup),pch=20,col=1:length(unique(pgroup)))
 plot(p$x[,c(comp1,comp2)], col=as.numeric(type[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
 legend("topright", legend=unique(type),pch=20,col=1:length(unique(type)))
 
+# Loop over combinations of PCs and color by family (etc) 
 par(mfrow=c(4,4))
 for (comp1 in 1:4){
 	for (comp2 in 1:4){
@@ -89,7 +91,7 @@ for (comp1 in 1:4){
 }
 }
 
-# Look at gut samples.
+# Look at gut samples only.
 subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
 
 columns <- intersect(subset, colnames(tmm))
@@ -111,6 +113,7 @@ for (comp1 in 1:5){
 }
 }
 
+# PCA with labels
 comp1 <- 1
 comp2 <- 3
 plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(gut)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
@@ -133,6 +136,11 @@ res <- pvclust(x.log,nboot=100,method.hclust="complete")
 # 1000 bootstrap samples for all contigs, complete linkage
 res <- pvclust(x.log,nboot=1000,method.hclust="complete")
 
+save(res, file="gut_pvclust_complete_1000.Robj")
+
+pdf("gut_pvclust_complete_1000.pdf")
+plot(res)
+dev.off()
 
 # DESeq2
 subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
