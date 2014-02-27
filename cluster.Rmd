@@ -1,0 +1,191 @@
+Cluster analysis of butterfly transcriptomes
+========================================================
+
+Start by including some libraries.
+
+```{r}
+library(pheatmap)
+library(pvclust)
+library(DESeq2)
+```
+Let's define a function for plotting a heatmap with more descriptive names.
+
+```{r fig.width=14, fig.height=14}
+labelled_heatmap <- function(data, meta){
+  corrs <- cor(data)
+	display.names <- paste(meta$Host_Plant,meta$Tissue,meta$Host.Plant.use,sep=".")
+	names(display.names) <- meta$Customer_ID
+	colnames(corrs) <- display.names[colnames(corrs)]
+	rownames(corrs) <- colnames(corrs)
+	pheatmap(corrs, cex=0.8)
+}
+```
+... and some functions for normalization and pre-processing of counts.
+
+```{r}
+normalize.voom <- function(counts){
+  require(limma)
+	return(voom(counts)$E)
+}
+ 
+cpm.tmm <- function(counts, groups=NA){
+	require(edgeR)
+	if(is.na(groups)){
+		d<-DGEList(counts=counts)
+	}
+	else{
+		d<-DGEList(counts=counts, group=groups)
+	}
+	d <- calcNormFactors(d, method="TMM") 
+	return(cpm(d, normalized.lib.sizes=TRUE))
+}
+```
+Read count table and metadata (information about samples). We remove the failed sample (B1MT) at once to keep the metadata table "in sync" with the count table - it's more convenient if they inculde exactly the same samples.
+
+```{r}
+counts <- read.delim("read_counts_with_proper_headers.csv",sep="\t",row.names=1)
+meta  <- read.csv("rna-seqecoevowabi_relational_table.csv")
+meta <- meta[-which(meta$Customer_ID=="B1MT"),]
+```
+Define some vectors that will be useful for coloring plots later.
+
+```{r}
+tissue <- meta$Tissue
+names(tissue) <- meta$Customer_ID
+hostplant <- meta$Host_Plant
+names(hostplant) <- meta$Customer_ID
+pgroup <- meta$Phylogeny_group
+names(pgroup) <- meta$Customer_ID
+type <- meta$Host.Plant.use
+names(type) <- meta$Customer_ID
+```
+
+Normalize and do a principal component analysis.
+
+```{r:normalize_PCA}
+tmm <- cpm.tmm(counts)
+labelled_heatmap(tmm,meta)
+
+log.cpm.tmm <- normalize.voom(tmm)
+labelled_heatmap(log.cpm.tmm,meta)
+p <- prcomp(t(log.cpm.tmm))
+
+```
+
+Visualize two of the components, colored by tissue.
+
+```{r:pca_tissue}
+comp1 <- 1
+comp2 <- 2
+plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+legend("topright", legend=c("Fat body","Gut","Labial gland","Malpighian tubules"),pch=20,col=1:4)
+```
+
+
+```{r:pca_four_colorings}
+comp1 <- 1
+comp2 <- 2
+par(mfrow=c(2,2))
+# Color by tissue
+plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue[colnames(counts)]),pch=20,main=paste0("Tissue, PCs ", comp1, ",", comp2))
+legend("topright", legend=c("Fat body","Gut","Labial gland","Malpighian tubules"),pch=20,col=1:4)
+# Color by host plant
+plot(p$x[,c(comp1,comp2)], col=as.numeric(hostplant[colnames(counts)]),pch=20,main=paste0("Host plant, PCs ", comp1, ",", comp2))
+legend("topright", legend=unique(hostplant),pch=20,col=1:length(unique(hostplant)))
+# Color by phylogeny group
+plot(p$x[,c(comp1,comp2)], col=as.numeric(pgroup[colnames(counts)]),pch=20,main=paste0("Phylogroup, PCs ", comp1, ",", comp2))
+legend("topright", legend=unique(pgroup),pch=20,col=1:length(unique(pgroup)))
+# Color by core vs extended
+plot(p$x[,c(comp1,comp2)], col=as.numeric(type[colnames(counts)]),pch=20,main=paste0("CoreVsExtended, PCs ", comp1, ",", comp2))
+legend("topright", legend=unique(type),pch=20,col=1:length(unique(type)))
+```
+
+Loop over combinations of PCs and color by family. 
+```{r:pca_loop}
+par(mfrow=c(4,4))
+for (comp1 in 1:4){
+  for (comp2 in 1:4){
+		if (comp1 != comp2){
+	# Color by family
+	family = meta$Family
+	names(family) <- meta$Customer_ID
+	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(family[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+#legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))
+	}
+}
+}
+```
+
+Let's look at gut samples only, colored by core vs extended.
+
+```{r:pca_gut}
+subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
+columns <- intersect(subset, colnames(tmm))
+x <- tmm[,columns]
+
+x.meta <- meta[which(meta$Tissue=="Labial gland"),]
+x.log <- normalize.voom(x)
+
+#p <- prcomp(t(x.log[which(rowMeans(x.log)>1),]))
+p <- prcomp(t(x.log))
+
+par(mfrow=c(5,4))
+for (comp1 in 1:5){
+  for (comp2 in 1:5){
+		if (comp1 != comp2){
+	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+#legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))
+	}
+}
+}
+```
+
+PCA of gut samples with more informative text labels, colored by core vs extended.
+
+```{r:pca_gut_textlabels}
+comp1 <- 3
+comp2 <- 4
+plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x.log)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+legend("topright", 	legend=unique(type),pch=20,col=1:length(unique(type)))
+display.names <- paste(meta$Host_Plant,meta$Phylogeny_group,meta$Host.Plant.use,sep=".")
+names(display.names) <- meta$Customer_ID
+display.names.gut <- display.names[colnames(x.log)]
+text(p$x[,comp1],p$x[,comp2],labels=display.names.gut,cex=0.6)
+```
+
+Try clustering with bootstrapping (pvclust) on gut samples.
+We have commented out the actual commands here because they take a long time to run. Instead, we read a previously saved version of the pvclust output.
+
+```{r:pvclust_gut}
+# Using contigs with CPM > 1
+# res <- pvclust(x.log[which(rowMeans(x)>1),],nboot=100,method.hclust="complete")
+# Using all contigs
+# res <- pvclust(x.log,nboot=100,method.hclust="complete")
+# 1000 bootstrap samples for all contigs, complete linkage
+# res <- pvclust(x.log,nboot=1000,method.hclust="complete")
+# save(res, file="gut_pvclust_complete_1000.Robj")
+# pdf("gut_pvclust_complete_1000.pdf")
+# plot(res)
+# dev.off()
+
+load('gut_pvclust_complete_1000.Robj')
+plot(res)
+```
+
+Try differential expression analysis in DESeq2. We start by just looking at core vs extended within the gut samples. 
+
+```{r:deseq}
+# DESeq2
+subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Gut"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant")], design = ~Phylogeny_group)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.001),]
+sig.o <- sig[order(sig$padj),]
+head(sig.o)
+write.table(sig.o,file="gut_sig_DESeq2_0.001.txt",quote=F)
+```
