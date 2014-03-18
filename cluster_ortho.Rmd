@@ -144,8 +144,8 @@ PCA of gut samples with more informative text labels, colored by core vs extende
 
 ```{r:pca_gut_textlabels}
 par(mfrow=c(1,1))
-comp1 <- 2
-comp2 <- 3
+comp1 <- 1
+comp2 <- 2
 plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x.log)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
 legend("topright", 	legend=unique(type),pch=20,col=1:length(unique(type)))
 display.names <- paste(meta$Host_Plant,meta$Phylogeny_group,meta$Host.Plant.use,sep=".")
@@ -170,7 +170,10 @@ We have commented out the actual commands here because they take a long time to 
 #dev.off()
 ```
 
-Try differential expression analysis in DESeq2. We start by just looking at core vs extended within the gut samples. 
+Core vs extended differential gene expression in gut
+====================================================
+
+Using only gut samples (n=18).
 
 ```{r:deseq}
 # DESeq2
@@ -178,7 +181,7 @@ subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
 columns <- intersect(subset, colnames(counts))
 meta.gut <- meta[which(meta$Tissue=="Gut"),]
 
-dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant")], design = ~Host.Plant.use)
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
 
 dds <- DESeq(dds, betaPrior=FALSE)
 res <- results(dds)
@@ -188,7 +191,61 @@ print(dim(sig.o))
 write.table(sig.o,file="sig_gut_corevsextended_DESeq2_0.01.txt",quote=F)
 ```
 
-Differential expression analysis using all samples, with tissue and family as factors.
+Labial gland
+-------------
+```{r:labi}
+subset <- meta[which(meta$Tissue=="Labial gland"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Labial gland"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_labialgland_corevsextended_DESeq2_0.01.txt",quote=F)
+```
+
+Fat body
+-------------
+```{r:fat}
+subset <- meta[which(meta$Tissue=="Fat body"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Fat body"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_fatbody_corevsextended_DESeq2_0.01.txt",quote=F)
+```
+
+Malpighian tubules
+-------------
+```{r:malpi}
+subset <- meta[which(meta$Tissue=="Malpighian tubules"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Malpighian tubules"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_malpi_corevsextended_DESeq2_0.01.txt",quote=F)
+```
+
+DE analysis between core and extended using all samples
+==========================================================
+
+... with tissue and family as factors.
 
 ```{r:deseq-allsamples}
 columns <- intersect(meta$Customer_ID, colnames(counts))
@@ -213,5 +270,69 @@ for (gene in head(rownames(sig.o))){
   expr <- t(counts_[gene,]/colSums(counts_))
   temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
   print(bwplot(expr~core_vs_ext|tissue, data=temp, main=gene))
+  readline()
 }
+```
+
+Differential expression between phylogenetic groups
+===================================================
+
+Using all samples, with family and tissue as factors.
+
+```{r:plotfcn}
+plotphylo <- function(sig, counts){
+for (gene in head(rownames(sig))){
+  expr <- t(counts[gene,]/colSums(counts))
+  temp <- data.frame(expr=expr, tissue=meta$Tissue, phylo=meta$Phylogeny_group)
+  print(bwplot(expr~phylo|tissue, data=temp, main=gene))
+}
+}
+```
+
+Rosids vs. Ranunculales
+-----------------------
+
+```{r:deseq-phylogroups-1}
+columns <- intersect(meta$Customer_ID, colnames(counts))
+counts_ <- counts[,columns]
+
+dds <- DESeqDataSetFromMatrix(countData = counts_, colData = meta[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Tissue","Family")], design = ~Tissue+Family+Phylogeny_group)
+
+dds <- DESeq(dds, betaPrior=FALSE, fitType="local")
+#res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
+res <- results(dds, contrast=c("Phylogeny_group","Rosids","Ranunculales"))
+#res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+head(sig.o)
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_rosids_ranunc_alltissues_DESeq2_0.01.txt",quote=F)
+```
+
+
+Rosids vs. Asterids
+-----------------------
+
+```{r:deseq-phylogroups-2}
+res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+head(sig.o)
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_rosids_asterids_alltissues_DESeq2_0.01.txt",quote=F)
+```
+
+Ranunculales vs. Asterids
+-----------------------
+
+```{r:deseq-phylogroups-3}
+res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+head(sig.o)
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_ranunc_asterids_alltissues_DESeq2_0.01.txt",quote=F)
 ```
