@@ -2,6 +2,9 @@
 
 #source("http://bioconductor.org/biocLite.R") 
 #biocLite("topGO")
+#install.packages("memisc") 
+#biocLite("Rgraphviz")
+
 
 library(topGO)
 library(memisc)
@@ -9,35 +12,53 @@ library(Rgraphviz)
 
 args=(commandArgs(TRUE))
 
-if(length(args) < 5 ){
+if(length(args) < 4){
   print("Missing input arguments :" )  
   print("args[1] Full path to gene-Goterm relationship file")
   print("args[2] Output type of gene-Goterm relationship file [blast2GO/argot2/other]")
-  print("args[3] Type of function. This is dependent on the naming in the gene-Goterm relationship file but in most cases it is one of [F/P/C]")
-  print("args[4] Full path to candidate genes, e.g DE expressed genes.")
-  print("args[5] Prefix for results for filename of GO analysis")
-  print("args[6] Full path to background genes [Optional if not entire gene set should be used]")
-  print("args[7] Ortholog gene relationship [Optional if go terms are associated with another species genes]")
+  print("args[3] Path to edgeR output")
+  print("args[4] cutoff for significant genes")
   print("")
   print("Example start line :")
-  print("./topGOanalysis.R data/Hmel1.21.cdhit.ARGOT2.GOannotation.txt argot2 P data/GOI.txt firstGenes  ")
+  print("./topGOanalysis.R data/Hmel1.21.cdhit.ARGOT2.GOannotation.txt argot2 data/GOI.txt firstGenes")
   
   print("")
 }
-ModelGeneGOrelationshipFile = args[1] #Full path to gene annotation genes
-ModelGeneGOrelationshipFileFormat = args[2] #Outputfrom [blast2GO/argot2]
-GOtermFunction = args[3] #Output type of gene-Goterm relationship file [blast2GO/argot2/other]
-significantGenesFile = args[4] #Full path to candidate genes File
-outName = args[5] # Prefix for results for filename of GO analysis
-if(length(args) > 5){
-  backgroundGenesFile = args[6] #Genes that will be considered as background 
-}
-if(length(args) > 6){
-  ModelGeneOrthologsFile = args[7] #Genes that will be considered as background 
+ModelGeneGOrelationshipFile = args[1] #Full path to GOterm annotated genes
+ModelGeneGOrelationshipFileFormat = args[2] #Output type of gene-Goterm relationship file [blast2GO/argot2/other]
+edgeRFile = args[3] #Full path to candidate genes File
+cutoff  = args[4]
+
+getGOtermFunctions <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat){
+  
+  if(ModelGeneGOrelationshipFileFormat == "blast2GO"){
+    # SeqName Hit-Desc        GO-Group        GO-ID   Term
+    # HMEL025033-PA   homeobox protein abdominal-a homolog    F       GO:0003700      sequence-specific DNA binding transcription factor activity
+    ModelGeneGOrelationship <- read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+    colnames(ModelGeneGOrelationship) <- c("Locus", "Name", "Function", "GOterm", "Description")
+    
+  }else if(ModelGeneGOrelationshipFileFormat == "argot2"){
+    # Sequence        Aspect  GO ID   Name    Total Score     Internal Confidence     Information Content
+    # HMEL015695-PA   F       GO:0004222      metalloendopeptidase activity   6.728758473824388       0.5     7.3129653461121995
+    
+    ModelGeneGOrelationship <- read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+    colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm", "Name", "Total Score", "Internal Confidence","Information Content")
+  }else{
+    ##Asumes that there are three colums with 1.GeneName 2.Function  3. Goterm and it containts a header
+    
+    # Locus        Function  GOterm  
+    # HMEL015695-PA   F       GO:0004222
+    ModelGeneGOrelationship <-  read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+    colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm")
+    
+  }
+  
+  Functions = unique(ModelGeneGOrelationship$Function)
+  return (Functions)
 }
 
-getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,significantGenesFile,
-                         backgroundGenesFile = "Not present",ModelGeneOrthologsFile="Not present"){
+getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,edgeRFile,
+                         cutoff,Determinant = "FDR", ModelGeneOrthologsFile="Not present"){
   #############################################################
   # Load the ortholog information  START 
   ##############################################################
@@ -59,14 +80,24 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
   ##############################################################
   
   #If named "Not present" then all Locuses will be considered 
-  if(backgroundGenesFile != "Not present"){
-    backgroundList <- read.table(backgroundGenesFile, header=F)[[1]]
-  }else{
-    BackgroundList <- "Not present"
-  }
   
-  #Genes of interest, should be a subset of BackgroundList  
-  GOIList <- read.table(significantGenesFile, header=F)[[1]]
+  
+  
+  GeneList <- read.table(edgeRFile, header=T,sep="\t", stringsAsFactors=F)
+  GOIList = unique(rownames(GeneList[GeneList[Determinant] < cutoff, ]))
+  BackgroundList = unique(rownames(GeneList))
+  print("")
+  print(paste("Defining set of locuses that will serve as background from this file",edgeRFile, sep=" : ") )
+  print(paste("Number of unique locuses ",length(BackgroundList), sep=" : ") )
+  print("")
+  print("")
+  print(paste("Defining set of locuses that will serve as significant locuses with",Determinant,"less than",cutoff,  sep=" ") )
+  print(paste("Number of unique locuses ",length(GOIList), sep=" : ") )
+  print("")
+  print("")
+  
+  
+  
   
   ############################################################
   # Load the background list and Gene of interest information STOP
@@ -92,8 +123,9 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
     
     # Locus        Function  GOterm  
     # HMEL015695-PA   F       GO:0004222
-    ModelGeneGOrelationship <- read.argot2file(ModelGeneGOrelationshipFile)
+    ModelGeneGOrelationship <-  read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
     colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm")
+    
     
   }
   
@@ -122,9 +154,6 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
   # and mark genes of interest (GOI) START
   ##############################################################
   
-  if(BackgroundList == "Not present"){
-    BackgroundList = ModelGeneOrthologsRightFormat$Locus
-  }
   ModelGeneOrthologsRightFormat = filterGeneList(ModelGeneOrthologsRightFormat,BackgroundList,GOIList)
   #printOrthoInfoAfterFiltering(ModelGeneOrthologsRightFormat)
   
@@ -146,56 +175,72 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
   
   #############################################################
   # Change the GOterm table into right format
-  # and filter for only those present in List START
+  # and filter for only those present in List STOP
   ##############################################################
   
   
   #############################################################
   # Move the format into the way TopGO wants it. 
-  # and load TopGO START
+  # and return it START
   ##############################################################
   
   geneList = getTopGOGenelistFormat(ModelGeneGOrelationship$Locus,ModelGeneOrthologsRightFormat$Ortholog[ModelGeneOrthologsRightFormat$GOI==1])
   gene2GOlist =getTopGOGene2GOrelationshipFormat(ModelGeneGOrelationship)
+  edgeRFileName = strsplit(edgeRFile,split="/")[[1]][length(strsplit(edgeRFile,split="/")[[1]])]
   
-  topGOdata <- new("topGOdata", description=outName, ontology="BP", allGenes=geneList, annot = annFUN.gene2GO, gene2GO = gene2GOlist, nodeSize=0)
-  
-  
+  if(GOtermFunction == "F"){ 
+    topGOdata <- new("topGOdata", description=paste(edgeRFileName,GOtermFunction,cutoff,sep="_"), ontology="MF", allGenes=geneList, 
+                     annot = annFUN.gene2GO, gene2GO = gene2GOlist, nodeSize=0)
+  }else if(GOtermFunction == "P"){
+    topGOdata <- new("topGOdata", description=paste(edgeRFileName,GOtermFunction,cutoff,sep="_"), ontology="BP", allGenes=geneList, 
+                     annot = annFUN.gene2GO, gene2GO = gene2GOlist, nodeSize=0)
+  }else if(GOtermFunction == "C"){
+    topGOdata <- new("topGOdata", description=paste(edgeRFileName,GOtermFunction,cutoff,sep="_"), ontology="CC", allGenes=geneList, 
+                     annot = annFUN.gene2GO, gene2GO = gene2GOlist, nodeSize=0)
+  }
+  return (topGOdata) 
   #############################################################
   # Move the format into the way TopGO wants it. 
-  # and load TopGO STOP
+  # and return it  STOP
   ##############################################################
   
-  return (topGOdata)
+  
 }
 
 #statistic tests
 printTopGOresults <- function(topGOdata,outName){
+  
   test.statFis <- new("classicCount", testStatistic=GOFisherTest, name="Fisher test")
   resultFis <- getSigGroups(topGOdata, test.statFis)
+  
+  
   resultFisadj <- resultFis
   Fisadj <- p.adjust(score(resultFis),method="BH")
   score(resultFisadj) <- Fisadj
   
-  test.statKS <- new("classicScore", testStatistic=GOKSTest, name="KS tests")
-  resultKS <- getSigGroups(topGOdata, test.statKS)
-  resultKSadj <- resultKS
-  KSadj <- p.adjust(score(resultKS),method="BH")
-  score(resultKSadj) <- KSadj
+  #  test.statKS <- new("classicScore", testStatistic=GOKSTest, name="KS tests")
+  #  resultKS <- getSigGroups(topGOdata, test.statKS)
+  #  resultKSadj <- resultKS
+  #  KSadj <- p.adjust(score(resultKS),method="BH")
+  #  score(resultKSadj) <- KSadj
   
-  test.statElim <- new("elimCount", testStatistic=GOFisherTest, name="Fisher test", cutOff=0.01)
-  resultElim <- getSigGroups(topGOdata, test.statElim)
+  #  test.statElim <- new("elimCount", testStatistic=GOFisherTest, name="Fisher test", cutOff=0.01)
+  #  resultElim <- getSigGroups(topGOdata, test.statElim)
   
-  test.statWei <- new("weightCount", testStatistic=GOFisherTest, name="Fisher test", sigRatio="ratio")
-  resultWei <- getSigGroups(topGOdata, test.statWei)
+  #  test.statWei <- new("weightCount", testStatistic=GOFisherTest, name="Fisher test", sigRatio="ratio")
+  #  resultWei <- getSigGroups(topGOdata, test.statWei)
   
-  list <- list(classic=score(resultFis), KS=score(resultKS), elim=score(resultElim), weight=score(resultWei))
+  #list <- list(classic=score(resultFis), KS=score(resultKS), elim=score(resultElim), weight=score(resultWei))
+  #listadj <- list(classicadj=score(resultFisadj), KSadj=score(resultKSadj), elim=score(resultElim), weight=score(resultWei))
+  #allRes <- GenTable(topGOdata, classicFisher = resultFis, classicKS = resultKS, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="classicFisher", ranksOf="classicFisher", topNodes=30)  
+  #allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj, classicKSadj = resultKSadj, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisheradj", topNodes=30)
   
-  listadj <- list(classicadj=score(resultFisadj), KSadj=score(resultKSadj), elim=score(resultElim), weight=score(resultWei))
+  list <- list(classic=score(resultFis))
+  listadj <- list(classicadj=score(resultFisadj))
+  allRes <- GenTable(topGOdata, classicFisher = resultFis, orderBy="classicFisher", ranksOf="classicFisher", topNodes=30)  
+  allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj,  orderBy="classicFisheradj", ranksOf="classicFisheradj", topNodes=30)
   
-  allRes <- GenTable(topGOdata, classicFisher = resultFis, classicKS = resultKS, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisher", topNodes=30)
   
-  allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj, classicKSadj = resultKSadj, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisheradj", topNodes=30)
   
   #output of data
   #saves everything in Results order within the folder one is at
@@ -205,19 +250,9 @@ printTopGOresults <- function(topGOdata,outName){
   
   write.table(allResadj, file=paste("results/",outName,"_stat_adj.txt",sep=""), row.names=FALSE, col.names=TRUE)
   
-  
-  pdf(paste("results/P_value_distribution_",outName,"_adj.pdf",sep=""))
-  par(mfrow = c(2,2))
-  for (nn in names(listadj)){
-    p.val <- listadj[[nn]]
-    hist(p.val[p.val < 1], br = 50, xlab = "p values", 
-         main = paste("Histogram for method:", nn, sep = " "))
-  }
-  dev.off()
-  
-  pdf(paste("results/GO_graphFis_",outName,"_15nodes_adj.pdf",sep=""))
-  showSigOfNodes(topGOdata, score(resultFisadj), firstSigNodes=15, useInfo="all")
-  dev.off()
+  # pdf(paste("results/GO_graphFis_",outName,"_15nodes_adj.pdf",sep=""))
+  # showSigOfNodes(topGOdata, score(resultFisadj), firstSigNodes=15, useInfo="all")
+  #  dev.off()
   
   write.table(allRes, file=paste("results/",outName,"_stat.txt",sep=""), row.names=FALSE, col.names=TRUE)
   
@@ -238,9 +273,9 @@ printTopGOresults <- function(topGOdata,outName){
   #showSigOfNodes(topGOdata, score(resultFis), firstSigNodes=15, useInfo="all")
   #dev.off()
   
-  pdf(paste("results/GO_graphWeiFis_",outName,"_15nodes.pdf",sep=""))
-  showSigOfNodes(topGOdata, score(resultWei), firstSigNodes=15, useInfo="all")
-  dev.off()
+  #pdf(paste("results/GO_graphWeiFis_",outName,"_15nodes.pdf",sep=""))
+  #showSigOfNodes(topGOdata, score(resultWei), firstSigNodes=15, useInfo="all")
+  #dev.off()
   
 }
 
@@ -380,9 +415,19 @@ getTopGOGene2GOrelationshipFormat <- function(ModelGeneGOrelationship){
 
 
 
+Functions = getGOtermFunctions(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat)
 
-topGOdata = getTopGOdata(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,significantGenesFile)
-printTopGOresults(topGOdata,outName)
+edgeRFileName = strsplit(edgeRFile,split="/")[[1]][length(strsplit(edgeRFile,split="/")[[1]])]
+for(i in 1:length(Functions)){
+  outName = paste(edgeRFileName,ModelGeneGOrelationshipFileFormat,Functions[[i]],cutoff,sep="_")
+  topGOdata = getTopGOdata(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,Functions[[i]],
+                           edgeRFile, cutoff)
+  printTopGOresults(topGOdata,outName)
+  
+  
+}
+
+
 
 # set workddir for the RNAs 
 
