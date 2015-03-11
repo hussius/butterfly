@@ -13,6 +13,7 @@ if(length(args) < 5 ){
   print("Missing input arguments :" )  
   print("args[1] Full path to gene-Goterm relationship file")
   print("args[2] Output type of gene-Goterm relationship file [blast2GO/argot2/other]")
+  print("args[4] Full path to candidate genes, e.g DE expressed genes.")
   print("args[3] Type of function. This is dependent on the naming in the gene-Goterm relationship file but in most cases it is one of [F/P/C]")
   print("args[4] Full path to candidate genes, e.g DE expressed genes.")
   print("args[5] Prefix for results for filename of GO analysis")
@@ -20,20 +21,56 @@ if(length(args) < 5 ){
   print("args[7] Ortholog gene relationship [Optional if go terms are associated with another species genes]")
   print("")
   print("Example start line :")
-  print("./topGOanalysis.R data/Hmel1.21.cdhit.ARGOT2.GOannotation.txt argot2 P data/GOI.txt firstGenes  ")
+  print("./topGOanalysis.R data/Hmel1.21.cdhit.ARGOT2.GOannotation.txt argot2 P data/GOI.txt firstGenes")
   
   print("")
 }
-ModelGeneGOrelationshipFile = args[1] #Full path to gene annotation genes
-ModelGeneGOrelationshipFileFormat = args[2] #Outputfrom [blast2GO/argot2]
-GOtermFunction = args[3] #Output type of gene-Goterm relationship file [blast2GO/argot2/other]
-significantGenesFile = args[4] #Full path to candidate genes File
-outName = args[5] # Prefix for results for filename of GO analysis
-if(length(args) > 5){
-  backgroundGenesFile = args[6] #Genes that will be considered as background 
+ModelGeneGOrelationshipFile = args[1] #Full path to GOterm annotated genes
+GOtermFunction = args[2] #Output type of gene-Goterm relationship file [blast2GO/argot2/other]
+significantGenesFile = args[3] #Full path to candidate genes File
+backgroundGenesFile = "Not present"
+if(length(args) > 3){
+  backgroundGenesFile = args[4] #Genes that will be considered as background 
 }
-if(length(args) > 6){
-  ModelGeneOrthologsFile = args[7] #Genes that will be considered as background 
+ModelGeneOrthologsFile = "Not present"
+if(length(args) > 4){
+  ModelGeneOrthologsFile = args[5] #Genes that will be considered as background 
+}
+
+ModelGeneGOrelationshipFileFormat = args[6] #Outputfrom [blast2GO/argot2]
+if(length(args) > 5){
+  ModelGeneOrthologsFile = args[5] #Genes that will be considered as background 
+}
+
+outName = args[7] # Prefix for results for filename of GO analysis
+
+
+getGOtermFunctions <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat){
+
+  if(ModelGeneGOrelationshipFileFormat == "blast2GO"){
+  # SeqName Hit-Desc        GO-Group        GO-ID   Term
+  # HMEL025033-PA   homeobox protein abdominal-a homolog    F       GO:0003700      sequence-specific DNA binding transcription factor activity
+  ModelGeneGOrelationship <- read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+  colnames(ModelGeneGOrelationship) <- c("Locus", "Name", "Function", "GOterm", "Description")
+  
+}else if(ModelGeneGOrelationshipFileFormat == "argot2"){
+  # Sequence        Aspect  GO ID   Name    Total Score     Internal Confidence     Information Content
+  # HMEL015695-PA   F       GO:0004222      metalloendopeptidase activity   6.728758473824388       0.5     7.3129653461121995
+  
+  ModelGeneGOrelationship <- read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+  colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm", "Name", "Total Score", "Internal Confidence","Information Content")
+}else{
+  ##Asumes that there are three colums with 1.GeneName 2.Function  3. Goterm and it containts a header
+  
+  # Locus        Function  GOterm  
+  # HMEL015695-PA   F       GO:0004222
+  ModelGeneGOrelationship <-  read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
+  colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm")
+  
+}
+
+Functions = unique(ModelGeneGOrelationship$Function)
+ return (Functions)
 }
 
 getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,significantGenesFile,
@@ -60,13 +97,31 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
   
   #If named "Not present" then all Locuses will be considered 
   if(backgroundGenesFile != "Not present"){
-    backgroundList <- read.table(backgroundGenesFile, header=F)[[1]]
+    BackgroundList <- unique(read.table(backgroundGenesFile, header=F)[[1]])
+    print("")
+    print(paste("Defining set of locuses that will serve as background from this file",backgroundGenesFile, sep=" : ") )
+    print(paste("Number of unique locuses ",length(BackgroundList), sep=" : ") )
+    print("")
+    print("")
   }else{
     BackgroundList <- "Not present"
+    print("")
+    print(paste("No background locus list is defined. All locuses associated with a GO term will serve as background") )
+    print("")
+    print("")
+    
   }
   
   #Genes of interest, should be a subset of BackgroundList  
   GOIList <- read.table(significantGenesFile, header=F)[[1]]
+  print("")
+  print(paste("Defining set of locuses that will serve as significant genes from this file",backgroundGenesFile, sep=" : ") )
+  print(paste("Number of unique locuses ",length(GOIList), sep=" : ") )
+  print("")
+  print("")
+  
+  
+  
   
   ############################################################
   # Load the background list and Gene of interest information STOP
@@ -92,8 +147,9 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
     
     # Locus        Function  GOterm  
     # HMEL015695-PA   F       GO:0004222
-    ModelGeneGOrelationship <- read.argot2file(ModelGeneGOrelationshipFile)
+    ModelGeneGOrelationship <-  read.table(ModelGeneGOrelationshipFile, header=T, fill=T, sep="\t", quote="", stringsAsFactors=F)
     colnames(ModelGeneGOrelationship) <- c("Locus", "Function", "GOterm")
+    
     
   }
   
@@ -171,32 +227,39 @@ getTopGOdata <- function(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFile
 
 #statistic tests
 printTopGOresults <- function(topGOdata,outName){
+  
   test.statFis <- new("classicCount", testStatistic=GOFisherTest, name="Fisher test")
   resultFis <- getSigGroups(topGOdata, test.statFis)
+  
+  
   resultFisadj <- resultFis
   Fisadj <- p.adjust(score(resultFis),method="BH")
   score(resultFisadj) <- Fisadj
   
-  test.statKS <- new("classicScore", testStatistic=GOKSTest, name="KS tests")
-  resultKS <- getSigGroups(topGOdata, test.statKS)
-  resultKSadj <- resultKS
-  KSadj <- p.adjust(score(resultKS),method="BH")
-  score(resultKSadj) <- KSadj
+#  test.statKS <- new("classicScore", testStatistic=GOKSTest, name="KS tests")
+#  resultKS <- getSigGroups(topGOdata, test.statKS)
+#  resultKSadj <- resultKS
+#  KSadj <- p.adjust(score(resultKS),method="BH")
+#  score(resultKSadj) <- KSadj
   
-  test.statElim <- new("elimCount", testStatistic=GOFisherTest, name="Fisher test", cutOff=0.01)
-  resultElim <- getSigGroups(topGOdata, test.statElim)
+#  test.statElim <- new("elimCount", testStatistic=GOFisherTest, name="Fisher test", cutOff=0.01)
+#  resultElim <- getSigGroups(topGOdata, test.statElim)
   
-  test.statWei <- new("weightCount", testStatistic=GOFisherTest, name="Fisher test", sigRatio="ratio")
-  resultWei <- getSigGroups(topGOdata, test.statWei)
+#  test.statWei <- new("weightCount", testStatistic=GOFisherTest, name="Fisher test", sigRatio="ratio")
+#  resultWei <- getSigGroups(topGOdata, test.statWei)
   
-  list <- list(classic=score(resultFis), KS=score(resultKS), elim=score(resultElim), weight=score(resultWei))
-  
-  listadj <- list(classicadj=score(resultFisadj), KSadj=score(resultKSadj), elim=score(resultElim), weight=score(resultWei))
-  
-  allRes <- GenTable(topGOdata, classicFisher = resultFis, classicKS = resultKS, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisher", topNodes=30)
-  
-  allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj, classicKSadj = resultKSadj, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisheradj", topNodes=30)
-  
+  #list <- list(classic=score(resultFis), KS=score(resultKS), elim=score(resultElim), weight=score(resultWei))
+  #listadj <- list(classicadj=score(resultFisadj), KSadj=score(resultKSadj), elim=score(resultElim), weight=score(resultWei))
+  #allRes <- GenTable(topGOdata, classicFisher = resultFis, classicKS = resultKS, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="classicFisher", ranksOf="classicFisher", topNodes=30)  
+  #allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj, classicKSadj = resultKSadj, elimFisher = resultElim, WeightedFisher = resultWei, orderBy="WeightedFisher", ranksOf="classicFisheradj", topNodes=30)
+
+  list <- list(classic=score(resultFis))
+  listadj <- list(classicadj=score(resultFisadj))
+  allRes <- GenTable(topGOdata, classicFisher = resultFis, orderBy="classicFisher", ranksOf="classicFisher", topNodes=30)  
+  allResadj <- GenTable(topGOdata, classicFisheradj = resultFisadj,  orderBy="classicFisheradj", ranksOf="classicFisheradj", topNodes=30)
+
+
+
   #output of data
   #saves everything in Results order within the folder one is at
   if (!file.exists("results")){
@@ -204,20 +267,10 @@ printTopGOresults <- function(topGOdata,outName){
   }
   
   write.table(allResadj, file=paste("results/",outName,"_stat_adj.txt",sep=""), row.names=FALSE, col.names=TRUE)
-  
-  
-  pdf(paste("results/P_value_distribution_",outName,"_adj.pdf",sep=""))
-  par(mfrow = c(2,2))
-  for (nn in names(listadj)){
-    p.val <- listadj[[nn]]
-    hist(p.val[p.val < 1], br = 50, xlab = "p values", 
-         main = paste("Histogram for method:", nn, sep = " "))
-  }
-  dev.off()
-  
-  pdf(paste("results/GO_graphFis_",outName,"_15nodes_adj.pdf",sep=""))
-  showSigOfNodes(topGOdata, score(resultFisadj), firstSigNodes=15, useInfo="all")
-  dev.off()
+
+ # pdf(paste("results/GO_graphFis_",outName,"_15nodes_adj.pdf",sep=""))
+ # showSigOfNodes(topGOdata, score(resultFisadj), firstSigNodes=15, useInfo="all")
+#  dev.off()
   
   write.table(allRes, file=paste("results/",outName,"_stat.txt",sep=""), row.names=FALSE, col.names=TRUE)
   
@@ -238,9 +291,9 @@ printTopGOresults <- function(topGOdata,outName){
   #showSigOfNodes(topGOdata, score(resultFis), firstSigNodes=15, useInfo="all")
   #dev.off()
   
-  pdf(paste("results/GO_graphWeiFis_",outName,"_15nodes.pdf",sep=""))
-  showSigOfNodes(topGOdata, score(resultWei), firstSigNodes=15, useInfo="all")
-  dev.off()
+  #pdf(paste("results/GO_graphWeiFis_",outName,"_15nodes.pdf",sep=""))
+  #showSigOfNodes(topGOdata, score(resultWei), firstSigNodes=15, useInfo="all")
+  #dev.off()
   
 }
 
@@ -381,7 +434,7 @@ getTopGOGene2GOrelationshipFormat <- function(ModelGeneGOrelationship){
 
 
 
-topGOdata = getTopGOdata(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,significantGenesFile)
+topGOdata = getTopGOdata(ModelGeneGOrelationshipFile,ModelGeneGOrelationshipFileFormat,GOtermFunction,significantGenesFile,backgroundGenesFile=backgroundGenesFile)
 printTopGOresults(topGOdata,outName)
 
 # set workddir for the RNAs 
