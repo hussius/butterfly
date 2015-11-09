@@ -1,3 +1,12 @@
+---
+title: "Butterfly"
+author: Mikael Huss
+date: November 9, 2015
+output:
+  md_document:
+    variant: markdown_github
+---
+
 Cluster analysis of butterfly transcriptomes
 ========================================================
 
