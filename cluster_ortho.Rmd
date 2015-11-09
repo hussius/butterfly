@@ -1,12 +1,18 @@
 Cluster analysis of butterfly transcriptomes
 ========================================================
 
+## Pre-processing and normalization
+
 Cluster & analyze only those mapping to an Hme ortholog.
 
-```{r}
-library(pheatmap)
-library(pvclust)
-library(DESeq2)
+```{r:loadlibs, message=F, warning=F}
+library("pheatmap")
+library("pvclust")
+library("DESeq2")
+library("lattice")
+library("reshape")
+library("sva")
+library("edgeR")
 ```
 Let's define a function for plotting a heatmap with more descriptive names.
 
@@ -22,14 +28,14 @@ labelled_heatmap <- function(data, meta){
 ```
 ... and some functions for normalization and pre-processing of counts.
 
-```{r}
+```{r:normalize-preprocess}
 normalize.voom <- function(counts){
   require(limma)
 	return(voom(counts)$E)
 }
  
 cpm.tmm <- function(counts, groups=NA){
-	require(edgeR)
+	require("edgeR")
 	if(is.na(groups)){
 		d<-DGEList(counts=counts)
 	}
@@ -55,27 +61,26 @@ return(d.edge$common.dispersion)
 }
 
 ```
-Read count table and metadata (information about samples). We remove the failed sample (B1MT) at once to keep the metadata table "in sync" with the count table - it's more convenient if they inculde exactly the same samples.
+Read count table and metadata (information about samples). 
 
-```{r}
+```{r:read-data}
 counts <- read.delim("genewise_readcount2.txt",sep="\t",row.names=1)
 meta  <- read.delim("rna-seqecoevowabi_relational_table2.txt",colClasses=c(rep("factor",7),"numeric"))
-#meta <- meta[-which(meta$Customer_ID=="B1MT"),]
 ```
 Define some vectors that will be useful for coloring plots later.
 
 ```{r}
-tissue <- meta$Tissue
-names(tissue) <- meta$Customer_ID
-hostplant <- meta$Host_Plant
-names(hostplant) <- meta$Customer_ID
-pgroup <- meta$Phylogeny_group
-names(pgroup) <- meta$Customer_ID
-type <- meta$Host.Plant.use
-names(type) <- meta$Customer_ID
+tissue_ <- meta$Tissue
+names(tissue_) <- meta$Customer_ID
+hostplant_ <- meta$Host_Plant
+names(hostplant_) <- meta$Customer_ID
+pgroup_ <- meta$Phylogeny_group
+names(pgroup_) <- meta$Customer_ID
+type_ <- meta$Host.Plant.use
+names(type_) <- meta$Customer_ID
 ```
 
-Normalize and do a principal component analysis.
+Normalize, create a table to use in SIMCA (for PLS-DA) and plot heat maps before and after log transformation.
 
 ```{r:normalize_PCA}
 tmm <- cpm.tmm(counts)
@@ -83,7 +88,7 @@ labelled_heatmap(tmm,meta)
 
 log.cpm.tmm <- normalize.voom(tmm)
 
-columns <- intersect(meta$Customer_ID, colnames(counts))
+columns <- intersect(as.character(meta$Customer_ID), colnames(counts))
 norm.counts <- log.cpm.tmm[,columns]
 
 temp <- rbind(HostPlantUse=as.character(meta$Host.Plant.use), norm.counts)
@@ -95,12 +100,23 @@ simca <- rbind(PhylogenyGroup=as.character(meta$Phylogeny_group), temp4)
 write.table(simca, file="normalized_ortho_counts.txt",sep="\t",quote=F)
 
 labelled_heatmap(log.cpm.tmm,meta)
-p <- prcomp(t(log.cpm.tmm))
 ```
 
-Try some Anova stuff suggested on BioStar.
+Different approaches to quantifying the influence of various factors to gene expression profiles
+------------------------------------------------------------------------------------------------
+
+We are interested in finding out which factors are the most important for determining gene expression profiles. The factors we consider for each sample are: (1) tissue, (2) phylogeny group of the plant the larva was raised on, (3) "core vs extended", that is, the type of feeding repertoire that the plant belongs to, (4) the family of the larva and in some cases (5) the identity of the plant.
+
+We use the following methods:
+
+- ANOVA on linear models of gene expression
+- Principal component analysis (PCA) to visualize and color plots by different factors
+- OPLS-DA (done outside of R, in SIMCA), a supervised method where we try to predict the value (level) of a factor from the gene expression profiles in order to rank the factors by "predictability" from gene expression data 
+- Surrogate Variable Analysis (SVA) to "blindly" detect the strongest tendencies in the gene expression data (after tissue has been factored out.) The correlations of the resulting latent (surrogate) variables to the factors will indicate which are most distinctive.
+
+###ANOVA analysis of linear models for genes
+
 ```{r:anova}
-library(reshape)
 m <- melt(norm.counts)
 colnames(m) <- c("gene_ID","sample_ID","log-CPM")
 tissue <- rep(meta$Tissue, each=nrow(norm.counts))
@@ -108,50 +124,50 @@ hostplantuse <- rep(meta$Host.Plant.use, each=nrow(norm.counts))
 family <- rep(meta$Family, each=nrow(norm.counts))
 phylogroup <- rep(meta$Phylogeny_group, each=nrow(norm.counts))
 data <- data.frame(m, tissue=tissue, host_plant_use=hostplantuse, phylogeny_group=phylogroup, family=family)
-subset <- data[sample(1:nrow(data), 50000),]
-#fit <- lm(log.CPM ~ tissue + host_plant_use + phylogeny_group + family, data=data)
-#fit <- lm(log.CPM ~ tissue + phylogeny_group + host_plant_use + family, data=data)
 
-pdf("anova_comparison.pdf")
+#pdf("anova_comparison.pdf")
 par(mfrow=c(3,1))
-#barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
-#dev.off()
-# The above is dubious because host plant use and phylogeny group are strongly collinear, so drop each of these in turn
-# Switch order
+
+# Use different orderings of the factors, because the results will depend on the ordering.
+# PHYLOGROUP-HOSTPLANTUSE-TISSUE
 fit <- lm(log.CPM ~ phylogeny_group + host_plant_use + tissue, data=data)
 a <- anova(fit)
 barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
-
+# HOSTPLANTUSE-PHYLOGROUP-TISSUE
 fit <- lm(log.CPM ~ host_plant_use + phylogeny_group + tissue, data=data)
 a <- anova(fit)
 #pdf("anova_2.pdf")
 barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
 #dev.off()
-# Switch order
+# TISSUE-PHYLOGROUP-HOSTPLANTUSE
 fit <- lm(log.CPM ~ tissue + phylogeny_group + host_plant_use, data=data)
 a <- anova(fit)
 #pdf("anova_3.pdf")
 barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
-dev.off()
-# The above is dubious because host plant use and phylogeny group are strongly collinear, so drop each of these in turn
+#dev.off()
+# Since host plant use and phylogeny group are strongly collinear, drop each of these in turn.
 # Without host plant use
 fit <- lm(log.CPM ~ tissue + phylogeny_group + family, data=data)
 a <- anova(fit)
-pdf("anova_no_hostplantuse.pdf")
+#pdf("anova_no_hostplantuse.pdf")
 barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
-dev.off()
+#dev.off()
 # Without phylogroup
 fit <- lm(log.CPM ~ tissue + host_plant_use + family, data=data)
 a <- anova(fit)
-pdf("anova_no_phylogroup.pdf")
+#pdf("anova_no_phylogroup.pdf")
 barplot(a$"F value",names.arg=rownames(a), main="Anova on log-CPM",cex.names=0.7)
-dev.off()
+#dev.off()
+```
 
+All of the plots so far indicate that tissue is the strongest contributor, followed by host plant use.
+```{r:anova-interaction}
 # Try with interactions
-pdf("anova_interactions.pdf")
+#pdf("anova_interactions.pdf")
 # (a) panel
 par(mfrow=c(3,1))
-fit <- lm(log.CPM ~  phylogeny_group + host_plant_use + tissue + tissue:phylogeny_group  + tissue:host_plant_use, data=data)
+fit <- lm(log.CPM ~  phylogeny_group + tissue + host_plant_use + tissue:phylogeny_group  + tissue:host_plant_use, data=data)
+#fit <- lm(log.CPM ~ ranunc + tissue + host_plant_use + tissue:ranunc  + tissue:host_plant_use, data=data)
 a <- anova(fit)
 barplot(a$"F value"[-6],names.arg=rownames(a)[-6], main="Anova on log-CPM",cex.names=0.7,ylim=c(0,1000))
 # (b) panel
@@ -162,56 +178,44 @@ barplot(a$"F value"[-6],names.arg=rownames(a)[-6], main="Anova on log-CPM",cex.n
 fit <- lm(log.CPM ~ tissue + phylogeny_group + host_plant_use + tissue:phylogeny_group + tissue:host_plant_use, data=data)
 a <- anova(fit)
 barplot(a$"F value"[-6],names.arg=rownames(a)[-6], main="Anova on log-CPM",cex.names=0.7,ylim=c(0,1000))
-dev.off()
+#dev.off()
 ```
 
+###Principal component analysis. 
 Visualize two of the components, colored by tissue.
 
 ```{r:pca_tissue}
+p <- prcomp(t(log.cpm.tmm))
 comp1 <- 1
 comp2 <- 2
-plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue_[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
 legend("topright", legend=c("Fat body","Gut","Labial gland","Malpighian tubules"),pch=20,col=1:4)
 ```
 
-
+Color by other factors as well. 
 ```{r:pca_four_colorings}
 comp1 <- 1
 comp2 <- 2
 par(mfrow=c(2,2))
 # Color by tissue
-plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue[colnames(counts)]),pch=20,main=paste0("Tissue, PCs ", comp1, ",", comp2))
-legend("topright", legend=c("Fat body","Gut","Labial gland","Malpighian tubules"),pch=20,col=1:4)
+plot(p$x[,c(comp1,comp2)], col=as.numeric(tissue_[colnames(counts)]),pch=20,main=paste0("Tissue, PCs ", comp1, ",", comp2))
+legend("topleft", legend=c("Fat body","Gut","Labial gland","Malpighian tubules"),pch=20,col=1:4,cex=0.75)
 # Color by host plant
-plot(p$x[,c(comp1,comp2)], col=as.numeric(hostplant[colnames(counts)]),pch=20,main=paste0("Host plant, PCs ", comp1, ",", comp2))
-legend("topright", legend=unique(hostplant),pch=20,col=1:length(unique(hostplant)))
+plot(p$x[,c(comp1,comp2)], col=as.numeric(hostplant_[colnames(counts)]),pch=20,main=paste0("Host plant, PCs ", comp1, ",", comp2))
+legend("topleft", legend=unique(hostplant_),pch=20,col=1:length(unique(hostplant_)),cex=0.6)
 # Color by phylogeny group
-plot(p$x[,c(comp1,comp2)], col=as.numeric(pgroup[colnames(counts)]),pch=20,main=paste0("Phylogroup, PCs ", comp1, ",", comp2))
-legend("topright", legend=unique(pgroup),pch=20,col=1:length(unique(pgroup)))
+plot(p$x[,c(comp1,comp2)], col=as.numeric(pgroup_[colnames(counts)]),pch=20,main=paste0("Phylogroup, PCs ", comp1, ",", comp2))
+legend("topleft", legend=unique(pgroup_),pch=20,col=1:length(unique(pgroup_)),cex=0.75)
 # Color by core vs extended
-plot(p$x[,c(comp1,comp2)], col=as.numeric(type[colnames(counts)]),pch=20,main=paste0("CoreVsExtended, PCs ", comp1, ",", comp2))
-legend("topright", legend=unique(type),pch=20,col=1:length(unique(type)))
-```
-
-Loop over combinations of PCs and color by family. 
-```{r:pca_loop}
-par(mfrow=c(4,4))
-for (comp1 in 1:4){
-  for (comp2 in 1:4){
-		if (comp1 != comp2){
-	# Color by family
-	family = meta$Family
-	names(family) <- meta$Customer_ID
-	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(family[colnames(counts)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
-#legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))
-	}
-}
-}
+plot(p$x[,c(comp1,comp2)], col=as.numeric(type_[colnames(counts)]),pch=20,main=paste0("CoreVsExtended, PCs ", comp1, ",", comp2))
+legend("topright", legend=unique(type_),pch=20,col=1:length(unique(type_)))
 ```
 
 Let's look at gut samples only, colored by core vs extended.
 
 ```{r:pca_gut}
+comp1 <- 1
+comp2 <- 2
 subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
 columns <- intersect(subset, colnames(tmm))
 x <- tmm[,columns]
@@ -221,17 +225,19 @@ x.log <- normalize.voom(x)
 
 #p <- prcomp(t(x.log[which(rowMeans(x.log)>1),]))
 p <- prcomp(t(x.log))
-
-par(mfrow=c(5,4))
-for (comp1 in 1:5){
-  for (comp2 in 1:5){
-		if (comp1 != comp2){
-	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
-#legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))
-	}
-}
-}
+plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type_[colnames(x)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+#par(mfrow=c(5,4))
+#for (comp1 in 1:5){
+#  for (comp2 in 1:5){
+#		if (comp1 != comp2){
+#  	plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type_[colnames(x)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+#    #legend("topright", 	legend=unique(family),pch=20,col=1:length(unique(family)))#
+#	  readline()
+#    }
+#}
+#}
 ```
+So PC2 reflects a core/extended split. 
 
 PCA of gut samples with more informative text labels, colored by core vs extended.
 
@@ -239,596 +245,19 @@ PCA of gut samples with more informative text labels, colored by core vs extende
 par(mfrow=c(1,1))
 comp1 <- 1
 comp2 <- 2
-plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type[colnames(x.log)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
-legend("topright", 	legend=unique(type),pch=20,col=1:length(unique(type)))
+plot(p$x[,c(comp1,comp2)], 	col=as.numeric(type_[colnames(x.log)]),pch=20,main=paste0("PCs ", comp1, ",", comp2))
+legend("topright", 	legend=unique(type_),pch=20,col=1:length(unique(type_)))
 display.names <- paste(meta$Host_Plant,meta$Phylogeny_group,meta$Host.Plant.use,sep=".")
 names(display.names) <- meta$Customer_ID
 display.names.gut <- display.names[colnames(x.log)]
 text(p$x[,comp1],p$x[,comp2],labels=display.names.gut,cex=0.6)
 ```
 
-Try clustering with bootstrapping (pvclust) on gut samples.
-We have commented out the actual commands here because they take a long time to run. Instead, we read a previously saved version of the pvclust output.
+#### Correlations of PC scores to experimental variables
 
-```{r:pvclust_gut}
-# Using contigs with CPM > 1
-# res <- pvclust(x.log[which(rowMeans(x)>1),],nboot=100,method.hclust="complete")
-# Using all contigs
-# res <- pvclust(x.log,nboot=100,method.hclust="complete")
-# 1000 bootstrap samples for all contigs, complete linkage
-# res <- pvclust(x.log,nboot=1000,method.hclust="complete")
-#save(res, file="gut_pvclust_complete_1000.Robj")
-#pdf("gut_ortho_pvclust_complete_100.pdf")
-#plot(res)
-#dev.off()
-```
-
-Core vs extended differential gene expression in gut
-====================================================
-Using only gut samples (n=18).
-
-```{r:deseq}
-# DESeq2
-subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.gut <- meta[which(meta$Tissue=="Gut"),]
-
-dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
-
-dds <- DESeq(dds, betaPrior=FALSE)
-res <- results(dds)
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-print(dim(sig.o))
-write.table(sig.o,file="sig_gut_corevsextended_DESeq2_0.01.txt",quote=F)
-# 214 
-```
-
-Labial gland
--------------
-```{r:labi}
-subset <- meta[which(meta$Tissue=="Labial gland"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.lab <- meta[which(meta$Tissue=="Labial gland"),]
-
-dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.lab[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
-
-dds <- DESeq(dds, betaPrior=FALSE)
-res <- results(dds)
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-print(dim(sig.o))
-write.table(sig.o,file="sig_labialgland_corevsextended_DESeq2_0.01.txt",quote=F)
-
-```
-
-Fat body
--------------
-```{r:fat}
-subset <- meta[which(meta$Tissue=="Fat body"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.fat <- meta[which(meta$Tissue=="Fat body"),]
-
-dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.fat[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
-
-dds <- DESeq(dds, betaPrior=FALSE)
-res <- results(dds)
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-print(dim(sig.o))
-write.table(sig.o,file="sig_fatbody_corevsextended_DESeq2_0.01.txt",quote=F)
-```
-
-Malpighian tubules
--------------
-```{r:malpi}
-subset <- meta[which(meta$Tissue=="Malpighian tubules"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.mal <- meta[which(meta$Tissue=="Malpighian tubules"),]
-q
-dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.mal[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
-
-dds <- DESeq(dds, betaPrior=FALSE)
-res <- results(dds)
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-print(dim(sig.o))
-write.table(sig.o,file="sig_malpi_corevsextended_DESeq2_0.01.txt",quote=F)
-```
-
-Use edgeR to obtain sets of DE orthologs for a variety of comparisons.
-==========================================================
-Fit a model using several covariates. 
-
-```{r:edger-allsamples}
-library(edgeR)
-columns <- intersect(meta$Customer_ID, colnames(counts))
-counts_ <- counts[,columns]
-design=model.matrix(~0+Tissue+as.factor(Family)+Host.Plant.use+Phylogeny_group,data=meta)
-y <- DGEList(counts_, group=meta$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-edger.fit <- glmFit(y,design)
-```
-Extract DE orthocontigs for all the four tissues wrt the other tissues.
-```{r:edger-tissues}
-head(edger.fit$coefficient)
-library(lattice)
-# Fat body vs. other tissues
-lrt <- glmLRT(edger.fit,contrast=c(1,-1/3,-1/3,-1/3,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.fb <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.fb))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~tissue, data=temp, main=gene))
-  readline()
-}
-write.table(as.data.frame(topTags(lrt,n=100000)),file="fatbody_vs_other_tissues.txt",quote=F,sep="\t")
-# Gut vs other tissues
-lrt <- glmLRT(edger.fit,contrast=c(-1/3,1,-1/3,-1/3,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.gut <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.gut))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~tissue, data=temp, main=gene))
-  readline()
-}
-write.table(as.data.frame(topTags(lrt,n=100000)),file="gut_vs_other_tissues.txt",quote=F,sep="\t")
-# Labial gland vs other tissues
-lrt <- glmLRT(edger.fit,contrast=c(-1/3,-1/3,1,-1/3,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.lg <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.lg))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~tissue, data=temp, main=gene))
-  readline()
-}
-write.table(as.data.frame(topTags(lrt,n=100000)),file="labialgland_vs_other_tissues.txt",quote=F,sep="\t")
-
-# Malpighian tubules vs other tissues
-lrt <- glmLRT(edger.fit,contrast=c(-1/3,-1/3,-1/3,1,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.mt <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.mt))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~tissue, data=temp, main=gene))
-  readline()
-}
-write.table(as.data.frame(topTags(lrt,n=100000)),file="malpighiantubules_vs_other_tissues.txt",quote=F,sep="\t")
-```
-
-Now test plant groups against each other. (Doesn't work well to compare one against 2)
-```{r:edger-phylo}
-design=model.matrix(~0+Phylogeny_group+Tissue+as.factor(Family)+Host.Plant.use,data=meta)
-y <- DGEList(counts_, group=meta$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-edger.fit <- glmFit(y,design)
-
-# Asterids vs Ranunculales.
-lrt <- glmLRT(edger.fit,contrast=c(1,-1,0,0,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ast <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ast))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, phylogroup=meta$Phylogeny_group, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~phylogroup, data=temp, main=gene))
-  readline()
-}
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Asterids_vs_Ranunculales.txt",quote=F,sep="\t")
-
-# Ranunculales vs Rosids.
-lrt <- glmLRT(edger.fit,contrast=c(0,1,-1,0,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ran <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ran))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, phylogroup=meta$Phylogeny_group, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~phylogroup, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Ranunculales_vs_Rosids.txt",quote=F,sep="\t")
-
-# Rosids vs Asterids.
-lrt <- glmLRT(edger.fit,contrast=c(-1,0,1,0,0,0,0,0,0))
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ros <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ros))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, phylogroup=meta$Phylogeny_group, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~phylogroup, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Rosids_vs_Asterids.txt",quote=F,sep="\t")
-
-```
-
-
-Now test core vs extended within each tissue. (already done above with DESeq2 but let's try edgeR as well)
-
-```{r:edger-core-ext}
-# Fat body
-subset <- meta[which(meta$Tissue=="Fat body"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.fat <- meta[which(meta$Tissue=="Fat body"),]
-
-design=model.matrix(~0+as.factor(Family)+Phylogeny_group+Host.Plant.use,data=meta.fat)
-y <- DGEList(counts[,columns], group=meta.fat$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,coef="Host.Plant.useExtended")
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ce.fb <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ce.fb))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~core_vs_ext|tissue, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Fat_body_core_vs_extended.txt",quote=F,sep="\t")
-
-# Gut
-subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.gut <- meta[which(meta$Tissue=="Gut"),]
-
-design=model.matrix(~0+as.factor(Family)+Phylogeny_group+Host.Plant.use,data=meta.gut)
-y <- DGEList(counts[,columns], group=meta.gut$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,coef="Host.Plant.useExtended")
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ce.gut <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ce.gut))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~core_vs_ext|tissue, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Gut_core_vs_extended.txt",quote=F,sep="\t")
-
-
-# Labial gland
-subset <- meta[which(meta$Tissue=="Labial gland"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.lab <- meta[which(meta$Tissue=="Labial gland"),]
-
-design=model.matrix(~0+as.factor(Family)+Phylogeny_group+Host.Plant.use,data=meta.lab)
-y <- DGEList(counts[,columns], group=meta.lab$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,coef="Host.Plant.useExtended")
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ce.lg <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ce.lg))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~core_vs_ext|tissue, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Labial_gland_core_vs_extended.txt",quote=F,sep="\t")
-
-
-# Malpighian tubules
-subset <- meta[which(meta$Tissue=="Malpighian tubules"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.mal <- meta[which(meta$Tissue=="Malpighian tubules"),]
-
-design=model.matrix(~0+as.factor(Family)+Phylogeny_group+Host.Plant.use,data=meta.mal)
-y <- DGEList(counts[,columns], group=meta.mal$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,coef="Host.Plant.useExtended")
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.ce.mt <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.ce.mt))){
-  expr <- t(counts[gene,columns]/colSums(counts[,columns]))
-  temp <- data.frame(expr=expr, core_vs_ext=meta.mal$Host.Plant.use)
-  print(bwplot(expr~core_vs_ext, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Malpighian_tubules_core_vs_extended.txt",quote=F,sep="\t")
-
-```
-
-Test for differences between Family 1 and Family 3.
-First test regardless of tissue. 
-
-```{edger-family}
-design=model.matrix(~0+as.factor(Family)+Phylogeny_group+Host.Plant.use+Tissue,data=meta)
-y <- DGEList(counts, group=meta$Family)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,contrast=c(1,0,-1,0,0,0,0,0,0))
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.fam <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.fam))){
-  expr <- t(counts[gene,]/colSums(counts[,]))
-  temp <- data.frame(expr=expr, fam=meta$Family)
-  print(bwplot(expr~fam, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Malpighian_tubules_core_vs_extended.txt",quote=F,sep="\t")
-
-```
-
-In nettle.
-
-```{r:nettle}
-# Nettle
-subset <- meta[which(meta$Host_Plant=="Nettle"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.net <- meta[which(meta$Host_Plant=="Nettle"),]
-
-design=model.matrix(~0+as.factor(Family)+Tissue,data=meta.net)
-y <- DGEList(counts[,columns], group=meta.net$Family)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,contrast=c(1,0,-1,0,0,0))
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.05)
-sig.fam.net <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.fam.net))){
-  expr <- t(counts[gene,columns]/colSums(counts[,columns]))
-  temp <- data.frame(expr=expr, fam=meta.net$Family)
-  print(bwplot(expr~fam, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Fam1vsFam3_nettle.txt",quote=F,sep="\t")
-```
-
-In thistle.
-
-```{r:thistle}
-# Malpighian tubules
-subset <- meta[which(meta$Host_Plant=="Thistle"),"Customer_ID"]
-columns <- intersect(subset, colnames(counts))
-meta.this <- meta[which(meta$Host_Plant=="Thistle"),]
-
-design=model.matrix(~0+as.factor(Family)+Tissue,data=meta.this)
-y <- DGEList(counts[,columns], group=meta.this$Family)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-
-edger.fit <- glmFit(y, design)
-lrt <- glmLRT(edger.fit,contrast=c(1,0,-1,0,0,0))
-
-temp <- topTags(lrt,n=100000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.05)
-sig.fam.this <- as.data.frame(temp)[sig.fdr,]
-for(gene in head(rownames(sig.fam.this))){
-  expr <- t(counts[gene,columns]/colSums(counts[,columns]))
-  temp <- data.frame(expr=expr, fam=meta.this$Family)
-  print(bwplot(expr~fam, data=temp, main=gene))
-  readline()
-}
-
-write.table(as.data.frame(topTags(lrt,n=100000)),file="Fam1vsFam3_thistle.txt",quote=F,sep="\t")
-
-```
-
-Test the host plant use/tissue interaction. "Differences due to host plant use after accounting for tissue differences"
-
-```{r:interaction}
-design=model.matrix(~Tissue*Host.Plant.use,data=meta)
-y <- DGEList(counts_, group=meta$Host.Plant.use)
-y <- calcNormFactors(y, method="TMM")
-y <- estimateGLMCommonDisp(y,design)
-y <- estimateGLMTrendedDisp(y,design)
-y <- estimateGLMTagwiseDisp(y,design)
-edger.fit <- glmFit(y,design)
-lrt <- glmLRT(edger.fit,coef="Host.Plant.useExtended") 
-temp <- topTags(lrt,n=10000)
-sig.fdr <- which(as.data.frame(temp)[,"FDR"] < 0.01)
-sig.edger <- as.data.frame(temp)[sig.fdr,]
-```
-
-```{r:limma}
-nf <- calcNormFactors(counts_)
-design=model.matrix(~as.factor(Family)+Phylogeny_group+Tissue+Host.Plant.use,data=meta) # The same as for edgeR
-voom.data <- voom(counts_, design, lib.size = colSums(counts_) * nf)
-
-fit <- lmFit(voom.data, design)
-fit <- eBayes(fit) # To calculate p values
-
-fit2 <- contrasts.fit(fit, contrast.matrix)
-fit2 <- eBayes(fit2)
-pvalues <- fit2$p.value
-
-
-pdf("sig_ortho_count.pdf")
-barplot(colSums(fit$p.value[,-1] < 0.05),las=2,names.arg=c("Fam2","Fam3","Ranunc","Rosids","Gut","Labial","Malpigh","Extended"),main="Orthologs with p<0.05 for coefficient")
-dev.off()
-pdf("pvalue_dist_ortho.pdf")
-boxplot(fit$p.value[,-1],las=2,names=c("Fam2","Fam3","Ranunc","Rosids","Gut","Labial","Malpigh","Extended"),main="p value distribution for coefficients")
-dev.off()
-
-adj.p <- p.adjust(pvalues, method="BH")
-alpha = 0.05
-sig <- adj.p[adj.p<alpha]
-sig.o <- sig[order(sig)]
-print(paste(length(sig), "differentially expressed genes"))
-# Ordinary t statistics
-ord.t.stat <- fit2$coef/fit2$stdev.unscaled/fit2$sigma
-ord.t.stat <- fit$coef/fit$stdev.unscaled/fit$sigma
-
-```
-
-Plot some examples of genes with low p values. These are differentially expressed in core vs extended overall, that is, considering all tissues.
-
-```{r plot-genes}
-library(lattice)
-
-for (gene in head(rownames(sig.edger))){
-  expr <- t(counts_[gene,]/colSums(counts_))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core_vs_ext=meta$Host.Plant.use)
-  print(bwplot(expr~core_vs_ext|tissue, data=temp, main=gene))
-  readline()
-}
-```
-
-Try to look for "specific"/"binary" contigs
-===========================================
-
-```{r:plotfcn-core}
-plotcore <- function(genes, counts){
-for (gene in genes){
-  expr <- t(counts[gene,]/colSums(counts))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, core=meta$Host.Plant.use)
-  print(bwplot(expr~core|tissue, data=temp, main=gene))
-  readline()
-}
-}
-```
-
-```{r:specific-contigs}
-columns <- intersect(meta$Customer_ID, colnames(counts))
-counts_ <- counts[,columns]
-core <- meta[which(meta$Host.Plant.use=="Core"),"Customer_ID"]
-extended <- meta[which(meta$Host.Plant.use=="Extended"),"Customer_ID"]
-columns.core <- intersect(core, colnames(counts_))
-columns.extended <- intersect(extended, colnames(counts_))
-count.core <- counts_[,columns.core]
-count.extended <- counts_[,columns.extended]
-
-core.mean <- rowMeans(count.core)
-ext.mean <- rowMeans(count.extended)
-length(which(core.mean==0)) 
-length(which(ext.mean==0))
-zero.in.core <- which(core.mean==0 & ext.mean != 0)
-plotcore(names(zero.in.core),counts_)
-
-which(core.mean < 1 & ext.mean > 5)
-
-```
-
-Differential expression between phylogenetic groups
-===================================================
-
-Using all samples, with family and tissue as factors.
-
-```{r:plotfcn}
-plotphylo <- function(sig, counts){
-for (gene in head(rownames(sig))){
-  expr <- t(counts[gene,]/colSums(counts))
-  temp <- data.frame(expr=expr, tissue=meta$Tissue, phylo=meta$Phylogeny_group)
-  print(bwplot(expr~phylo|tissue, data=temp, main=gene))
-}
-}
-```
-
-Rosids vs. Ranunculales
------------------------
-
-```{r:deseq-phylogroups-1}
-columns <- intersect(meta$Customer_ID, colnames(counts))
-counts_ <- counts[,columns]
-
-dds <- DESeqDataSetFromMatrix(countData = counts_, colData = meta[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Tissue","Family")], design = ~Tissue+Family+Phylogeny_group)
-
-dds <- DESeq(dds, betaPrior=FALSE, fitType="local")
-#res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
-res <- results(dds, contrast=c("Phylogeny_group","Rosids","Ranunculales"))
-#res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-head(sig.o)
-print(dim(sig.o))
-plotphylo(sig.o, counts_)
-write.table(sig.o,file="sig_rosids_ranunc_alltissues_DESeq2_0.01.txt",quote=F)
-```
-
-
-Rosids vs. Asterids
------------------------
-
-```{r:deseq-phylogroups-2}
-res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-head(sig.o)
-print(dim(sig.o))
-plotphylo(sig.o, counts_)
-write.table(sig.o,file="sig_rosids_asterids_alltissues_DESeq2_0.01.txt",quote=F)
-```
-
-Ranunculales vs. Asterids
------------------------
-
-```{r:deseq-phylogroups-3}
-res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
-sig <- res[which(res$padj<0.01),]
-sig.o <- sig[order(sig$padj),]
-head(sig.o)
-print(dim(sig.o))
-plotphylo(sig.o, counts_)
-write.table(sig.o,file="sig_ranunc_asterids_alltissues_DESeq2_0.01.txt",quote=F)
-```
-
-Correlations of PC scores to experimental variables
----------------------------------------------------
+```{r}
 p <- prcomp(t(log.cpm.tmm))
-pdf("PC_correlations.pdf")
+#pdf("PC_correlations.pdf")
 par(mfrow=c(2,2))
 for (i in 1:4){
 scores <- p$x[,i]
@@ -845,14 +274,12 @@ names(pvals) <- c("Tissue","PhylogenyGroup","HostPlantUse","HostPlant","Family")
 barplot(-log(pvals),las=2,ylab="Significance (-log(p))",main=paste("Principal component",i))
 abline(2, 0, col="red")
 }
-dev.off()
+#dev.off()
+```
 
-Try SVA to assess importance of different factors
--------------------------------------------------
-Overkill?
+### Surrogate variable analysis (SVA)
 
 ```{r}
-library(sva)
 sampleinfo <- meta[,c("Host.Plant.use","Host_Plant", "Tissue", "Family", "Phylogeny_group")]
 rownames(sampleinfo) <- meta$Customer_ID
 data <- log.cpm.tmm[,rownames(sampleinfo)]
@@ -863,9 +290,9 @@ svobj <- sva(as.matrix(data),mod,mod0,n.sv=n.sv)
 surr <- svobj$sv
 ```
 
-What is in the first two surrogate variable?
+What is in the first two surrogate variables?
 ```{r}
-pdf("SVA.pdf")
+#pdf("SVA.pdf")
 par(mfrow=c(2,1))
 for (i in 1:2){
 pvals <- vector()
@@ -877,5 +304,206 @@ names(pvals) <- c("HostPlantUse","HostPlant","PhylogenyGroup","Family")
 barplot(-log(pvals),las=2,ylab="Significance (-log(p))",main=paste("PC", i))
 abline(2,0,col="red")
 }
-dev.off()
+#dev.off()
 ```
+Clustering with bootstrapping (pvclust) on gut samples.
+Commented out here due to long running time
+
+```{r:pvclust_gut}
+# Using contigs with CPM > 1
+# res <- pvclust(x.log[which(rowMeans(x)>1),],nboot=100,method.hclust="complete")
+# Using all contigs
+# res <- pvclust(x.log,nboot=100,method.hclust="complete")
+# 1000 bootstrap samples for all contigs, complete linkage
+# res <- pvclust(x.log,nboot=1000,method.hclust="complete")
+#save(res, file="gut_pvclust_complete_1000.Robj")
+#pdf("gut_ortho_pvclust_complete_100.pdf")
+#plot(res)
+#dev.off()
+```
+
+Core vs extended differential gene expression analysis
+====================================================
+
+### Core vs extended DE genes,  Gut samples (n=18).
+
+```{r:deseq}
+# DESeq2
+subset <- meta[which(meta$Tissue=="Gut"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.gut <- meta[which(meta$Tissue=="Gut"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_gut_corevsextended_DESeq2_0.01.txt",quote=F)
+
+# Phylogeny group in gut
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+
+rr <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Rosids"))
+write.table(rr,file="gut_ranunc_ros_DESeq2_0.01.txt",quote=F)
+ra <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+write.table(ra,file="gut_ranunc_ast_DESeq2_0.01.txt",quote=F)
+ar <- results(dds,contrast=c("Phylogeny_group","Asterids","Rosids"))
+write.table(ar,file="gut_ast_ros_DESeq2_0.01.txt",quote=F)
+
+```
+
+### Core vs extended DE genes,Labial gland
+
+```{r:labi}
+subset <- meta[which(meta$Tissue=="Labial gland"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.lab <- meta[which(meta$Tissue=="Labial gland"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.lab[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_labialgland_corevsextended_DESeq2_0.01.txt",quote=F)
+
+# Phylogeny group in labial
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.lab[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+
+rr <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Rosids"))
+write.table(rr,file="labial_ranunc_ros_DESeq2_0.01.txt",quote=F)
+ra <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+write.table(ra,file="labial_ranunc_ast_DESeq2_0.01.txt",quote=F)
+ar <- results(dds,contrast=c("Phylogeny_group","Asterids","Rosids"))
+write.table(ar,file="labial_ast_ros_DESeq2_0.01.txt",quote=F)
+
+```
+
+### Core vs extended DE genes, Fat body
+
+```{r:fat}
+subset <- meta[which(meta$Tissue=="Fat body"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.fat <- meta[which(meta$Tissue=="Fat body"),]
+
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.fat[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_fatbody_corevsextended_DESeq2_0.01.txt",quote=F)
+
+# Phylogeny group in fat body
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.fat[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+
+rr <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Rosids"))
+write.table(rr,file="fatbody_ranunc_ros_DESeq2_0.01.txt",quote=F)
+ra <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+write.table(ra,file="fatbody_ranunc_ast_DESeq2_0.01.txt",quote=F)
+ar <- results(dds,contrast=c("Phylogeny_group","Asterids","Rosids"))
+write.table(ar,file="fatbody_ast_ros_DESeq2_0.01.txt",quote=F)
+```
+
+### Core vs extended DE genes, Malpighian tubules
+
+```{r:malpi}
+subset <- meta[which(meta$Tissue=="Malpighian tubules"),"Customer_ID"]
+columns <- intersect(subset, colnames(counts))
+meta.mal <- meta[which(meta$Tissue=="Malpighian tubules"),]
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.mal[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Host.Plant.use)
+
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(dim(sig.o))
+write.table(sig.o,file="sig_malpi_corevsextended_DESeq2_0.01.txt",quote=F)
+
+# 
+dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.mal[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
+dds <- DESeq(dds, betaPrior=FALSE)
+res <- results(dds)
+
+rr <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Rosids"))
+write.table(rr,file="malpi_ranunc_ros_DESeq2_0.01.txt",quote=F)
+ra <- results(dds,contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+write.table(ra,file="malpi_ranunc_ast_DESeq2_0.01.txt",quote=F)
+ar <- results(dds,contrast=c("Phylogeny_group","Asterids","Rosids"))
+write.table(ar,file="malpi_ast_ros_DESeq2_0.01.txt",quote=F)
+```
+DESeq overall differential expression between phylogenetic groups
+===================================================
+
+Using all samples, with family and tissue as factors.
+
+```{r:plotfcn}
+plotphylo <- function(sig, counts){
+for (gene in head(rownames(sig))){
+  expr <- t(counts[gene,]/colSums(counts))
+  temp <- data.frame(expr=expr, tissue=meta$Tissue, phylo=meta$Phylogeny_group)
+  print(bwplot(expr~phylo|tissue, data=temp, main=gene))
+}
+}
+```
+
+DESeq: Rosids vs. Ranunculales
+-----------------------
+
+```{r:deseq-phylogroups-1}
+columns <- intersect(meta$Customer_ID, colnames(counts))
+counts_ <- counts[,columns]
+
+dds <- DESeqDataSetFromMatrix(countData = counts_, colData = meta[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Tissue","Family")], design = ~Tissue+Family+Phylogeny_group)
+
+dds <- DESeq(dds, betaPrior=FALSE, fitType="local")
+#res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
+res <- results(dds, contrast=c("Phylogeny_group","Rosids","Ranunculales"))
+#res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(head(sig.o))
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_rosids_ranunc_alltissues_DESeq2_0.01.txt",quote=F)
+```
+
+DESeq: Rosids vs. Asterids
+-----------------------
+
+```{r:deseq-phylogroups-2}
+res <- results(dds, contrast=c("Phylogeny_group","Rosids","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(head(sig.o))
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_rosids_asterids_alltissues_DESeq2_0.01.txt",quote=F)
+```
+
+DESeq: Ranunculales vs. Asterids
+-----------------------
+
+```{r:deseq-phylogroups-3}
+res <- results(dds, contrast=c("Phylogeny_group","Ranunculales","Asterids"))
+sig <- res[which(res$padj<0.01),]
+sig.o <- sig[order(sig$padj),]
+print(head(sig.o))
+print(dim(sig.o))
+plotphylo(sig.o, counts_)
+write.table(sig.o,file="sig_ranunc_asterids_alltissues_DESeq2_0.01.txt",quote=F)
+```
+
+
+
+
