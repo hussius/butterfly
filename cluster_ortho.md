@@ -416,13 +416,13 @@ write.table(sig.o,file="sig_gut_corevsextended_DESeq2_0.01.txt",quote=F)
 info <- meta.gut[,c("Host.Plant.use","Host_Plant")]
 rownames(info) <- columns
 #pdf("Gut_heatmap_allDE.pdf")
-pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:deseq-1.png)
 
 ``` r
-pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100))
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100))
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:deseq-2.png)
@@ -488,13 +488,13 @@ write.table(sig.o,file="sig_labialgland_corevsextended_DESeq2_0.01.txt",quote=F)
 info <- meta.lab[,c("Host.Plant.use","Host_Plant")]
 rownames(info) <- meta.lab$Customer_ID
 #pdf("LabialGland_heatmap_allDE.pdf")
-pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:labi-1.png)
 
 ``` r
-pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100))
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100))
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:labi-2.png)
@@ -559,13 +559,13 @@ write.table(sig.o,file="sig_fatbody_corevsextended_DESeq2_0.01.txt",quote=F)
 info <- meta.lab[,c("Host.Plant.use","Host_Plant")]
 rownames(info) <- meta.fat$Customer_ID
 #pdf("FatBody_heatmap_allDE.pdf")
-pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:fat-1.png)
 
 ``` r
-pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:fat-2.png)
@@ -630,13 +630,13 @@ write.table(sig.o,file="sig_malpi_corevsextended_DESeq2_0.01.txt",quote=F)
 info <- meta.mal[,c("Host.Plant.use","Host_Plant")]
 rownames(info) <- meta.mal$Customer_ID
 #pdf("MalpighianTubules_heatmap_allDE.pdf")
-pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:malpi-1.png)
 
 ``` r
-pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=9, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
 ```
 
 ![](cluster_ortho_files/figure-markdown_github/:malpi-2.png)
