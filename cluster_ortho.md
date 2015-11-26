@@ -14,6 +14,7 @@ library("lattice")
 library("reshape")
 library("sva")
 library("edgeR")
+library("RColorBrewer")
 ```
 
 Let's define a function for plotting a heatmap with more descriptive names.
@@ -68,7 +69,7 @@ Read count table and metadata (information about samples).
 
 ``` r
 counts <- read.delim("genewise_readcount2.txt",sep="\t",row.names=1)
-meta  <- read.delim("rna-seqecoevowabi_relational_table2.txt",colClasses=c(rep("factor",7),"numeric"))
+meta  <- read.delim("rna-seqecoevowabi_relational_table2.txt",colClasses=c(rep("factor",7),"numeric"),row.names=1)
 ```
 
 Define some vectors that will be useful for coloring plots later.
@@ -411,6 +412,24 @@ print(dim(sig.o))
 ``` r
 write.table(sig.o,file="sig_gut_corevsextended_DESeq2_0.01.txt",quote=F)
 
+# Heat map of core vs extended DE genes in gut
+info <- meta.gut[,c("Host.Plant.use","Host_Plant")]
+rownames(info) <- columns
+#pdf("Gut_heatmap_allDE.pdf")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:deseq-1.png)
+
+``` r
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100))
+```
+
+![](cluster_ortho_files/figure-markdown_github/:deseq-2.png)
+
+``` r
+#dev.off()
+
 # Phylogeny group in gut
 dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.gut[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
 dds <- DESeq(dds, betaPrior=FALSE)
@@ -464,6 +483,24 @@ print(dim(sig.o))
 
 ``` r
 write.table(sig.o,file="sig_labialgland_corevsextended_DESeq2_0.01.txt",quote=F)
+
+# Heat map of core vs extended DE genes in 
+info <- meta.lab[,c("Host.Plant.use","Host_Plant")]
+rownames(info) <- meta.lab$Customer_ID
+#pdf("LabialGland_heatmap_allDE.pdf")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:labi-1.png)
+
+``` r
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:100],columns], show_rownames = F, annotation_col=info, main="Top 50", color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100))
+```
+
+![](cluster_ortho_files/figure-markdown_github/:labi-2.png)
+
+``` r
+#dev.off()
 
 # Phylogeny group in labial
 dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.lab[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
@@ -519,6 +556,23 @@ print(dim(sig.o))
 ``` r
 write.table(sig.o,file="sig_fatbody_corevsextended_DESeq2_0.01.txt",quote=F)
 
+info <- meta.lab[,c("Host.Plant.use","Host_Plant")]
+rownames(info) <- meta.fat$Customer_ID
+#pdf("FatBody_heatmap_allDE.pdf")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:fat-1.png)
+
+``` r
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:fat-2.png)
+
+``` r
+#dev.off()
+
 # Phylogeny group in fat body
 dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.fat[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
 dds <- DESeq(dds, betaPrior=FALSE)
@@ -573,6 +627,23 @@ print(dim(sig.o))
 write.table(sig.o,file="sig_malpi_corevsextended_DESeq2_0.01.txt",quote=F)
 
 # 
+info <- meta.mal[,c("Host.Plant.use","Host_Plant")]
+rownames(info) <- meta.mal$Customer_ID
+#pdf("MalpighianTubules_heatmap_allDE.pdf")
+pheatmap(log.cpm.tmm[rownames(sig.o),columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="All DE")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:malpi-1.png)
+
+``` r
+pheatmap(log.cpm.tmm[rownames(sig.o)[1:50],columns], color=colorRampPalette(brewer.pal(n=7, name="YlOrRd"))(100), show_rownames = F, annotation_col=info, main="Top 50")
+```
+
+![](cluster_ortho_files/figure-markdown_github/:malpi-2.png)
+
+``` r
+#dev.off()
+
 dds <- DESeqDataSetFromMatrix(countData = counts[,columns], colData = meta.mal[,c("Customer_ID","Host.Plant.use","Phylogeny_group","Host_Plant","Family")], design = ~Family+Phylogeny_group)
 dds <- DESeq(dds, betaPrior=FALSE)
 ```
